@@ -240,9 +240,12 @@ body{display:flex;flex-direction:column}
   .ltbtn{border-radius:16px!important;font-size:11px;padding:5px 9px;
     min-height:36px;border:none!important;background:transparent!important}
   .ltbtn.active{background:#1a2d47!important;color:#60a5fa!important}
-  #sb-min-btn{display:flex!important;align-items:center;justify-content:center;font-size:20px}
-  #sidebar.minimized{height:52px!important;overflow:hidden!important}
-  #sidebar.minimized #sb-list,#sidebar.minimized #sb-drag-handle{display:none!important}
+  #sb-min-btn{display:flex!important;align-items:center;justify-content:center;
+    font-size:22px;min-width:48px;min-height:48px;color:#60a5fa!important}
+  #sb-close-btn{display:none!important}
+  #sb-open-btn{width:60px!important;height:60px!important;font-size:22px!important;
+    bottom:120px!important;border-right:1px solid #1e3a5f!important;
+    background:#111827!important;box-shadow:0 2px 12px rgba(0,0,0,.5)!important}
 }
 </style>
 </head>
@@ -431,7 +434,7 @@ function mkPopup(d){
     '&#x1F692; Apparatus: '+app+(d.du!=null?' &nbsp;&#x23F1; '+d.du+' min':'');
 }
 
-var mkLayer=L.layerGroup().addTo(map),heatLayer=null,markerMap={},activeMarkerKey=null;
+var mkLayer=L.layerGroup().addTo(map),heatLayer=null,markerMap={},activeMarkerKey=null,pendingHighlightKey=null;
 function visible(){
   var src;
   if(state.viewMode==='all_year'){
@@ -452,8 +455,28 @@ function render(){
     v.forEach(function(d){
       var icon=mkIcon(d.ca,d.ap);
       var m=L.marker([d.la,d.lo],{icon:icon});
-      m._origIcon=icon;
+      m._origIcon=icon; m._inc=d;
       m.bindPopup(mkPopup(d));
+      m.on('click',function(){
+        if(activeMarkerKey&&markerMap[activeMarkerKey]&&activeMarkerKey!==d.ik){
+          var prev=markerMap[activeMarkerKey];
+          if(prev._origIcon)prev.setIcon(prev._origIcon);
+        }
+        activeMarkerKey=d.ik;
+        m.setIcon(mkIconHighlighted(d.ca,d.ap));
+        openSidebar();
+        if(state.viewMode!=='day'||state.doy!==d.dy){
+          pendingHighlightKey=d.ik;
+          setDay(d.dy);
+        }else{
+          var card=document.querySelector('#sb-list [data-ik="'+d.ik+'"]');
+          if(card){
+            document.querySelectorAll('#sb-list .sb-card').forEach(function(c){c.classList.remove('active');});
+            card.classList.add('active');
+            card.scrollIntoView({behavior:'smooth',block:'nearest'});
+          }
+        }
+      });
       mkLayer.addLayer(m);
       markerMap[d.ik]=m;
     });
@@ -508,7 +531,7 @@ function renderSidebar(v){
   list.innerHTML=sorted.map(function(d,i){
     var s=STYLE[d.ca]||STYLE.other;
     var app=[d.sa?d.sa+' sup':'',d.ea?d.ea+' EMS':'',d.oa?d.oa+' other':''].filter(Boolean).join(' / ')||'0 app';
-    return '<div class="sb-card" data-idx="'+i+'">'
+    return '<div class="sb-card" data-idx="'+i+'" data-ik="'+d.ik+'">'
       +'<div class="sbc-row1"><span class="sbc-time">'+(d.tm||'--:--')+'</span>'
       +'<span class="sbc-badge">'+s.icon+' '+d.ty+'</span></div>'
       +'<div class="sbc-desc">'+(d.de||'Unknown')+'</div>'
@@ -536,6 +559,17 @@ function renderSidebar(v){
       }
     });
   });
+  if(pendingHighlightKey){
+    var pk=pendingHighlightKey; pendingHighlightKey=null;
+    setTimeout(function(){
+      var card=list.querySelector('[data-ik="'+pk+'"]');
+      if(card){
+        list.querySelectorAll('.sb-card').forEach(function(c){c.classList.remove('active');});
+        card.classList.add('active');
+        card.scrollIntoView({behavior:'smooth',block:'nearest'});
+      }
+    },50);
+  }
 }
 
 function updateDateLabel(cnt){
@@ -581,10 +615,7 @@ function updateSliderTicks(min,max){
   }
 }
 function openSidebar(){
-  var sb=document.getElementById('sidebar');
-  sb.classList.remove('closed','minimized');
-  var mb=document.getElementById('sb-min-btn');
-  if(mb){mb.innerHTML='&#x25BE;';mb.title='Minimize';}
+  document.getElementById('sidebar').classList.remove('closed');
 }
 function setDay(doy){
   state.doy=Math.max(state.rMin,Math.min(state.rMax,doy));
@@ -610,7 +641,6 @@ document.querySelectorAll('.mtab').forEach(function(btn){
       slider.min=r[0]; slider.max=r[1]; slider.disabled=false;
       slider.value=r[0]; state.doy=r[0]; state.viewMode='month';
       updateSliderTicks(r[0],r[1]);
-      if(isMobile)openSidebar();
       render();
     }
   });
@@ -700,9 +730,6 @@ document.getElementById('filter-modal').addEventListener('click',function(e){
 
 document.getElementById('sb-close-btn').addEventListener('click',function(){
   document.getElementById('sidebar').classList.add('closed');
-  document.getElementById('sidebar').classList.remove('minimized');
-  var mb=document.getElementById('sb-min-btn');
-  if(mb){mb.innerHTML='&#x25BE;';mb.title='Minimize';}
   if(!isMobile)document.getElementById('sb-open-btn').style.display='flex';
   setTimeout(function(){map.invalidateSize();},320);
 });
@@ -712,14 +739,7 @@ document.getElementById('sb-open-btn').addEventListener('click',function(){
   setTimeout(function(){map.invalidateSize();},320);
 });
 document.getElementById('sb-min-btn').addEventListener('click',function(){
-  var sb=document.getElementById('sidebar');
-  if(sb.classList.contains('minimized')){
-    sb.classList.remove('minimized');
-    this.innerHTML='&#x25BE;'; this.title='Minimize';
-  }else{
-    sb.classList.add('minimized');
-    this.innerHTML='&#x25B4;'; this.title='Maximize';
-  }
+  document.getElementById('sidebar').classList.add('closed');
 });
 
 function showLoader(on,txt){
