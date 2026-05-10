@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Watertown CT FD — NFIRS Incidents</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<style>
+/* Reset */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:#0d1117;color:#e2e8f0}
+body{display:flex;flex-direction:column}
+
+/* Filter bar */
+#filter-bar{flex:0 0 auto;display:flex;align-items:center;gap:5px;
+  padding:6px 14px;background:#0d1117;border-bottom:1px solid #1e3a5f;
+  overflow-x:auto;white-space:nowrap;min-height:48px}
+#filter-bar-btns{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.fbtn{border:1px solid #1e3a5f;border-radius:6px;background:#111827;
+  color:#9ca3af;font-size:12px;padding:4px 9px;cursor:pointer;
+  transition:background .15s,color .15s,border-color .15s;white-space:nowrap}
+.fbtn.on{color:#e2e8f0;border-color:#3b82f6;background:#1a2d47}
+.fbtn.on.f-fire{border-color:#dc2626;color:#fca5a5}
+.fbtn.on.f-ems{border-color:#2563eb;color:#93c5fd}
+.fbtn.on.f-mva{border-color:#ea580c;color:#fdba74}
+.fbtn.on.f-hazmat{border-color:#d97706;color:#fcd34d}
+.fbtn.on.f-service{border-color:#7c3aed;color:#c4b5fd}
+.fbtn.on.f-falsealarm{border-color:#4b5563;color:#9ca3af}
+.fbtn.on.f-goodintent{border-color:#374151;color:#6b7280}
+.fbtn.on.f-weather{border-color:#1d4ed8;color:#93c5fd}
+.fbtn.on.f-other{border-color:#374151;color:#6b7280}
+.f-divider{width:1px;background:#1e3a5f;height:20px;flex-shrink:0;margin:0 2px}
+.fbtn-all{border-color:#374151;color:#6b7280}
+.fbtn-all.on{border-color:#4b5563;color:#9ca3af;background:#1a1f2e}
+#filter-mobile-btn{display:none;align-items:center;gap:6px;
+  border:1px solid #1e3a5f;border-radius:6px;background:#111827;
+  color:#9ca3af;font-size:13px;padding:6px 14px;cursor:pointer;
+  min-height:44px;white-space:nowrap}
+#filter-mobile-btn.active{border-color:#3b82f6;color:#60a5fa;background:#1a2d47}
+
+/* Main layout */
+#main{flex:1 1 0;display:flex;min-height:0;position:relative}
+#map{flex:1 1 0;min-width:0;z-index:1}
+
+/* Sidebar */
+#sb-drag-handle{display:none;width:40px;height:4px;background:#374151;
+  border-radius:2px;margin:10px auto 2px;flex-shrink:0}
+#sidebar{flex:0 0 300px;width:300px;display:flex;flex-direction:column;
+  background:#0d1117;border-left:1px solid #1e3a5f;
+  transition:width .25s,opacity .25s;overflow:hidden;z-index:10}
+#sidebar.closed{width:0;opacity:0;pointer-events:none}
+#sb-hdr{display:flex;justify-content:space-between;align-items:center;
+  padding:10px 12px 8px;border-bottom:1px solid #1e3a5f;
+  background:#0d1117;flex-shrink:0}
+#sb-hdr-title{font-size:12px;font-weight:700;color:#60a5fa;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sb-hdr-count{font-size:11px;color:#4b5563;margin:0 8px;white-space:nowrap}
+#sb-close-btn{background:none;border:none;color:#4b5563;cursor:pointer;
+  font-size:16px;padding:2px 4px;line-height:1;min-width:28px;min-height:28px}
+#sb-close-btn:hover{color:#e2e8f0}
+#sb-list{flex:1;overflow-y:auto;padding:6px 8px;-webkit-overflow-scrolling:touch}
+#sb-list::-webkit-scrollbar{width:4px}
+#sb-list::-webkit-scrollbar-track{background:#0d1117}
+#sb-list::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:2px}
+#sb-open-btn{position:absolute;right:0;top:50%;transform:translateY(-50%);
+  z-index:999;background:#0d1117;border:1px solid #1e3a5f;
+  border-right:none;border-radius:6px 0 0 6px;
+  color:#60a5fa;padding:10px 6px;cursor:pointer;
+  font-size:14px;writing-mode:vertical-rl;display:none;
+  align-items:center;justify-content:center}
+#sidebar.closed + #sb-open-btn{display:flex}
+
+/* Incident cards */
+.sb-card{background:#111827;border:1px solid #1e3a5f;border-radius:7px;
+  margin-bottom:6px;padding:8px 10px;cursor:pointer;
+  transition:border-color .15s,background .15s}
+.sb-card:hover{background:#172231;border-color:#3b82f6}
+.sb-card.active{border-color:#60a5fa;background:#1a2d47}
+.sbc-row1{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.sbc-time{font-size:13px;font-weight:700;color:#60a5fa;font-variant-numeric:tabular-nums}
+.sbc-badge{font-size:11px;color:#6b7280;background:#1e3a5f;border-radius:4px;padding:1px 5px}
+.sbc-desc{font-size:12px;color:#e2e8f0;margin:2px 0}
+.sbc-addr{font-size:11px;color:#6b7280;margin-bottom:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbc-meta{font-size:11px;color:#4b5563;display:flex;gap:8px;flex-wrap:wrap}
+.sbc-meta span{white-space:nowrap}
+.sb-empty{padding:20px 12px;text-align:center;color:#374151;font-size:12px;line-height:1.6}
+
+/* Layer toggle */
+.layer-toggle{position:absolute;top:58px;left:12px;z-index:1000;
+  display:flex;flex-direction:column;gap:4px}
+.ltbtn{background:rgba(13,17,23,.93);border:1px solid #1e3a5f;
+  border-radius:7px;padding:7px 11px;color:#9ca3af;font-size:12px;
+  cursor:pointer;transition:all .15s;white-space:nowrap;backdrop-filter:blur(4px)}
+.ltbtn:hover{border-color:#3b82f6;color:#e2e8f0}
+.ltbtn.active{border-color:#3b82f6;color:#60a5fa;background:#1a2d47}
+
+/* Badge */
+.badge{position:absolute;top:12px;left:12px;z-index:1000;
+  background:rgba(13,17,23,.93);border:1px solid #1e3a5f;
+  border-radius:9px;padding:9px 13px;backdrop-filter:blur(4px);max-width:215px}
+.badge-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  font-size:13px;color:#60a5fa;font-weight:700}
+.badge p{font-size:10px;color:#4b5563;margin-top:2px;line-height:1.4}
+#year-select{background:#111827;border:1px solid #1e3a5f;color:#60a5fa;
+  border-radius:5px;padding:2px 4px;font-size:12px;cursor:pointer;
+  outline:none;flex-shrink:0;max-width:72px}
+#year-select:focus{border-color:#3b82f6}
+#total-lbl{color:#60a5fa;font-size:10px}
+#data-warnings{font-size:10px;color:#d97706;margin-top:3px;line-height:1.4;display:none}
+
+/* Timeline */
+#timeline{flex:0 0 auto;background:#0d1117;border-top:2px solid #1e3a5f;
+  padding:8px 16px 10px;min-height:108px}
+#month-tabs{display:flex;gap:3px;margin-bottom:8px;overflow-x:auto;padding-bottom:2px}
+#month-tabs::-webkit-scrollbar{height:3px}
+#month-tabs::-webkit-scrollbar-thumb{background:#1e3a5f}
+.mtab{border:1px solid #1e3a5f;border-radius:5px;background:transparent;
+  color:#4b5563;font-size:11px;padding:3px 8px;cursor:pointer;
+  transition:all .15s;white-space:nowrap;flex-shrink:0}
+.mtab:hover{color:#9ca3af;border-color:#3b82f6}
+.mtab.active{background:#1a2d47;border-color:#3b82f6;color:#60a5fa}
+.mtab.warn-tab{border-color:#92400e;color:#d97706}
+.mtab.warn-tab.active{background:#1c1207;border-color:#d97706}
+#day-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.step-btn{background:none;border:1px solid #1e3a5f;border-radius:50%;
+  color:#4b5563;width:28px;height:28px;cursor:pointer;font-size:13px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0}
+.step-btn:hover{border-color:#3b82f6;color:#60a5fa}
+#date-lbl-wrap{flex:1;text-align:center;min-width:0}
+#date-lbl{font-size:13px;font-weight:600;color:#e2e8f0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#day-meta{font-size:11px;color:#4b5563;margin-top:1px}
+#warn-badge{display:none;font-size:10px;color:#d97706;margin-top:1px}
+#play-btn{background:none;border:2px solid #3b82f6;border-radius:50%;
+  color:#3b82f6;width:32px;height:32px;cursor:pointer;font-size:13px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0}
+#play-btn:hover{background:rgba(59,130,246,.15)}
+#slider{width:100%;height:5px;-webkit-appearance:none;appearance:none;
+  border-radius:3px;outline:none;cursor:pointer;
+  background:linear-gradient(to right,#3b82f6 0%,#1e3a5f 0%)}
+#slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;
+  border-radius:50%;background:#3b82f6;cursor:pointer;border:2px solid #0d1117;
+  box-shadow:0 0 6px rgba(59,130,246,.5)}
+#slider::-moz-range-thumb{width:18px;height:18px;border:2px solid #0d1117;
+  border-radius:50%;background:#3b82f6;cursor:pointer}
+#slider:disabled{opacity:.4;cursor:not-allowed}
+
+/* Leaflet popup dark */
+.leaflet-popup-content-wrapper{background:#111827;border:1px solid #1e3a5f;
+  border-radius:8px;color:#e2e8f0;box-shadow:0 4px 20px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:#111827}
+.leaflet-popup-content{margin:10px 14px;font-size:12px;line-height:1.7}
+.leaflet-popup-content b{color:#60a5fa}
+.nfirs-mk{border:none!important;background:none!important}
+
+/* Bounce */
+@keyframes bounce-mk{
+  0%{transform:scale(1) translateY(0)}
+  30%{transform:scale(1.5) translateY(-6px)}
+  60%{transform:scale(1) translateY(0)}
+  80%{transform:scale(1.2) translateY(-3px)}
+  100%{transform:scale(1) translateY(0)}}
+.bouncing>div{animation:bounce-mk .5s ease}
+
+/* Loader */
+#loader{display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(13,17,23,.82);align-items:center;justify-content:center}
+#loader.on{display:flex}
+#loader-inner{text-align:center;color:#60a5fa}
+.spin{width:32px;height:32px;border:3px solid #1e3a5f;border-top-color:#3b82f6;
+  border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loader-text{font-size:13px}
+
+/* Filter modal */
+#filter-modal{display:none;position:fixed;inset:0;z-index:3000;
+  background:rgba(0,0,0,.65);align-items:flex-end}
+#filter-modal.open{display:flex}
+#filter-sheet{background:#0d1117;border:1px solid #1e3a5f;
+  border-radius:16px 16px 0 0;padding:16px;width:100%;max-height:70vh;overflow-y:auto}
+#fsh-title{font-size:14px;font-weight:700;color:#60a5fa;text-align:center;margin-bottom:12px}
+#fsh-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}
+#fsh-btns .fbtn{font-size:13px;padding:8px 12px;min-height:44px}
+#fsh-allnone{display:flex;gap:8px;margin-bottom:10px}
+#fsh-allnone .fbtn{flex:1;min-height:44px;font-size:13px;text-align:center}
+#fsh-close{width:100%;background:#1a2d47;border:1px solid #3b82f6;
+  color:#60a5fa;border-radius:8px;padding:13px;font-size:14px;
+  cursor:pointer;font-weight:600}
+
+/* Mobile (<=767px) */
+@media(max-width:767px){
+  html,body{overflow-x:hidden}
+  #main{overflow:hidden}
+  #filter-bar-btns{display:none!important}
+  #filter-mobile-btn{display:flex!important}
+  #sb-drag-handle{display:block!important}
+  #sidebar{position:fixed!important;bottom:0!important;left:0!important;right:0!important;
+    width:100%!important;height:60vh;max-height:60vh;
+    border-left:none!important;border-right:none!important;
+    border-top:2px solid #1e3a5f;border-radius:16px 16px 0 0;
+    z-index:2000;opacity:1!important;
+    transition:transform .3s cubic-bezier(.4,0,.2,1)!important}
+  #sidebar.closed{transform:translateY(100%);pointer-events:none!important;opacity:1!important}
+  #sidebar:not(.closed){transform:translateY(0)}
+  #sb-open-btn{position:fixed!important;bottom:110px!important;right:12px!important;
+    top:auto!important;transform:none!important;border-radius:50%!important;
+    border-right:1px solid #1e3a5f!important;writing-mode:horizontal-tb!important;
+    width:48px!important;height:48px!important;font-size:18px;padding:0!important}
+  .sbc-time{font-size:15px!important}
+  .sbc-desc{font-size:14px!important}
+  .sbc-addr{font-size:13px!important;white-space:normal!important}
+  .sbc-meta{font-size:12px!important}
+  .sb-card{padding:10px 12px;margin-bottom:8px}
+  .ltbtn{min-height:44px;padding:8px 12px;font-size:13px}
+  #timeline{min-height:96px;padding:6px 10px 8px}
+  #month-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .mtab{font-size:12px;padding:8px 10px;min-height:44px}
+  .step-btn{width:44px;height:44px;font-size:16px}
+  #play-btn{width:44px;height:44px;font-size:16px}
+  #slider{height:6px}
+  #slider::-webkit-slider-thumb{width:24px;height:24px}
+  #slider::-moz-range-thumb{width:24px;height:24px}
+  .badge{max-width:170px;padding:7px 10px}
+  .badge-title{font-size:12px}
+  .badge p,#total-lbl{font-size:9px}
+  #year-select{font-size:11px;max-width:60px}
+  .leaflet-popup-content-wrapper{min-width:200px}
+  .leaflet-popup-content{font-size:13px;line-height:1.6}
+}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div id="loader-inner">
+    <div class="spin"></div>
+    <div id="loader-text">Loading...</div>
+  </div>
+</div>
+
+<div id="filter-modal">
+  <div id="filter-sheet">
+    <div id="fsh-title">Filter Incident Types</div>
+    <div id="fsh-btns">
+      <button class="fbtn f-fire"       data-cat="fire">&#x1F525; Fire</button>
+      <button class="fbtn f-ems"        data-cat="ems">&#x271A; Medical</button>
+      <button class="fbtn f-mva"        data-cat="mva">&#x1F697; MVA</button>
+      <button class="fbtn f-hazmat"     data-cat="hazmat">&#x26A0; Hazmat</button>
+      <button class="fbtn f-falsealarm" data-cat="falsealarm">&#x2717; False Alarm</button>
+      <button class="fbtn f-goodintent" data-cat="goodintent">&#x1F6AB; Good Intent</button>
+      <button class="fbtn f-service"    data-cat="service">&#x1F527; Service</button>
+      <button class="fbtn f-weather"    data-cat="weather">&#x26C8; Weather</button>
+      <button class="fbtn f-other"      data-cat="other">&#x25A1; Other</button>
+    </div>
+    <div id="fsh-allnone">
+      <button class="fbtn fbtn-all" id="fsh-btn-all">All</button>
+      <button class="fbtn fbtn-all" id="fsh-btn-none">None</button>
+    </div>
+    <button id="fsh-close">Done</button>
+  </div>
+</div>
+
+<div id="filter-bar">
+  <button id="filter-mobile-btn">&#x1F536; Filters <span id="filter-count"></span></button>
+  <div id="filter-bar-btns">
+    <button class="fbtn f-fire"       data-cat="fire">&#x1F525; Fire</button>
+    <button class="fbtn f-ems"        data-cat="ems">&#x271A; Medical</button>
+    <button class="fbtn f-mva"        data-cat="mva">&#x1F697; MVA</button>
+    <button class="fbtn f-hazmat"     data-cat="hazmat">&#x26A0; Hazmat</button>
+    <button class="fbtn f-falsealarm" data-cat="falsealarm">&#x2717; False Alarm</button>
+    <button class="fbtn f-goodintent" data-cat="goodintent">&#x1F6AB; Good Intent</button>
+    <button class="fbtn f-service"    data-cat="service">&#x1F527; Service</button>
+    <button class="fbtn f-weather"    data-cat="weather">&#x26C8; Weather</button>
+    <button class="fbtn f-other"      data-cat="other">&#x25A1; Other</button>
+    <div class="f-divider"></div>
+    <button class="fbtn fbtn-all" id="btn-all">All</button>
+    <button class="fbtn fbtn-all" id="btn-none">None</button>
+  </div>
+</div>
+
+<div id="main">
+  <div class="badge">
+    <div class="badge-title">
+      &#x1F692; <span id="dept-name">Watertown FD</span>
+      <select id="year-select" title="Select year"></select>
+    </div>
+    <p id="dept-meta">FDID 01240 &bull; CT &bull; NFIRS PDR</p>
+    <p><span id="total-lbl"></span></p>
+    <div id="data-warnings"></div>
+  </div>
+
+  <div class="layer-toggle">
+    <button class="ltbtn active" id="lt-markers">&#x1F4CD; Markers</button>
+    <button class="ltbtn"        id="lt-heat">&#x1F321; Heat Map</button>
+  </div>
+
+  <div id="map"></div>
+
+  <button id="sb-open-btn" title="Open call log">&#x2630; Log</button>
+
+  <div id="sidebar">
+    <div id="sb-drag-handle"></div>
+    <div id="sb-hdr">
+      <div id="sb-hdr-title">Daily Call Log</div>
+      <span id="sb-hdr-count"></span>
+      <button id="sb-close-btn" title="Close">&#x2715;</button>
+    </div>
+    <div id="sb-list"><div class="sb-empty">Select a day to see calls</div></div>
+  </div>
+</div>
+
+<div id="timeline">
+  <div id="month-tabs">
+    <button class="mtab active" data-month="0">All Year</button>
+    <button class="mtab" data-month="1">Jan</button>
+    <button class="mtab" data-month="2">Feb</button>
+    <button class="mtab" data-month="3">Mar</button>
+    <button class="mtab" data-month="4">Apr</button>
+    <button class="mtab" data-month="5">May</button>
+    <button class="mtab" data-month="6">Jun</button>
+    <button class="mtab" data-month="7">Jul</button>
+    <button class="mtab" data-month="8">Aug</button>
+    <button class="mtab" data-month="9">Sep</button>
+    <button class="mtab" data-month="10">Oct</button>
+    <button class="mtab" data-month="11">Nov</button>
+    <button class="mtab" data-month="12">Dec</button>
+  </div>
+  <div id="day-row">
+    <button class="step-btn" id="prev-btn">&#x25C0;</button>
+    <div id="date-lbl-wrap">
+      <div id="date-lbl">All Year</div>
+      <div id="day-meta"></div>
+      <div id="warn-badge">&#x26A0;&#xFE0F; Data incomplete for this month</div>
+    </div>
+    <button class="step-btn" id="next-btn">&#x25B6;</button>
+    <button id="play-btn" title="Play / Pause">&#x25B6;</button>
+  </div>
+  <input id="slider" type="range" min="1" max="366" value="1" disabled>
+</div>
+
+<script>
+var DATA=[],META={},MRANGE=[],currentYear=null,currentDeptId='watertown_ct';
+var byDay={};
+var ALL_CATS=['fire','ems','mva','hazmat','service','falsealarm','goodintent','weather','other'];
+var state={doy:0,rMin:1,rMax:366,mode:'markers',filters:new Set(ALL_CATS)};
+var MNAMES=['','January','February','March','April','May','June','July','August','September','October','November','December'];
+var WNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MO_SHORT=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function buildMRange(year){
+  var leap=(year%4===0&&year%100!==0)||(year%400===0);
+  var md=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
+  var r=[null],s=1;
+  md.forEach(function(d){r.push([s,s+d-1]);s+=d;});
+  return r;
+}
+function doyToDate(doy,year){var d=new Date(year,0,1);d.setDate(d.getDate()+doy-1);return d;}
+function fmtDate(doy,year){
+  var d=doyToDate(doy,year);
+  return WNAMES[d.getDay()]+', '+MNAMES[d.getMonth()+1]+' '+d.getDate()+', '+year;
+}
+
+var isMobile=window.innerWidth<768;
+var map=L.map('map',{center:[41.558,-73.115],zoom:isMobile?12:13,zoomControl:false,tap:false});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; CartoDB | NFIRS PDR | FEMA/USFA',maxZoom:19}).addTo(map);
+L.control.zoom({position:isMobile?'bottomleft':'topleft'}).addTo(map);
+
+var STYLE={
+  fire:       {bg:'#dc2626',icon:'&#x1F525;'},
+  ems:        {bg:'#1d4ed8',icon:'&#x271A;'},
+  mva:        {bg:'#c2410c',icon:'&#x1F697;'},
+  hazmat:     {bg:'#92400e',icon:'&#x26A0;'},
+  service:    {bg:'#5b21b6',icon:'&#x1F527;'},
+  falsealarm: {bg:'#374151',icon:'&#x2717;'},
+  goodintent: {bg:'#4b5563',icon:'&#x1F6AB;'},
+  weather:    {bg:'#1e3a5f',icon:'&#x26C8;'},
+  other:      {bg:'#1e3a5f',icon:'&middot;'},
+};
+function mkIcon(ca,ap){
+  var s=STYLE[ca]||STYLE.other;
+  var sz=Math.min(26,Math.max(10,10+Math.min(ap,6)*2.67)),h=sz/2;
+  return L.divIcon({
+    html:'<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+s.bg+
+      ';border:1.5px solid rgba(255,255,255,.2);display:flex;align-items:center;'+
+      'justify-content:center;font-size:'+Math.max(7,sz*.5)+'px;'+
+      'box-shadow:0 1px 6px rgba(0,0,0,.7);">'+s.icon+'</div>',
+    iconSize:[sz,sz],iconAnchor:[h,h],className:'nfirs-mk'
+  });
+}
+function mkPopup(d){
+  var s=STYLE[d.ca]||STYLE.other;
+  var app=[d.sa?d.sa+' sup':'',d.ea?d.ea+' EMS':'',d.oa?d.oa+' other':''].filter(Boolean).join(' / ')||'0';
+  return '<b>'+s.icon+' '+d.ty+' &mdash; '+(d.de||'&mdash;')+'</b><br>'+
+    '&#x1F4C5; '+d.dt+(d.tm?' &nbsp;&#x23F0; '+d.tm:'')+'<br>'+
+    (d.ad?'&#x1F4CD; '+d.ad+'<br>':'')+
+    '&#x1F692; Apparatus: '+app+(d.du!=null?' &nbsp;&#x23F1; '+d.du+' min':'');
+}
+
+var mkLayer=L.layerGroup().addTo(map),heatLayer=null,markerMap={};
+function visible(){
+  var src=state.doy===0?DATA:(byDay[state.doy]||[]);
+  return src.filter(function(d){return state.filters.has(d.ca);});
+}
+
+function render(){
+  var v=visible();
+  mkLayer.clearLayers(); markerMap={};
+  if(state.mode==='markers'){
+    v.forEach(function(d){
+      var m=L.marker([d.la,d.lo],{icon:mkIcon(d.ca,d.ap)});
+      m.bindPopup(mkPopup(d));
+      mkLayer.addLayer(m);
+      markerMap[d.ik]=m;
+    });
+  }
+  if(heatLayer){map.removeLayer(heatLayer);heatLayer=null;}
+  if(state.mode==='heat'){
+    heatLayer=L.heatLayer(v.map(function(d){return[d.la,d.lo,0.2+Math.min(d.ap,6)*0.13];}),
+      {radius:22,blur:18,maxZoom:17,max:1,
+       gradient:{'0':'#313695','0.25':'#4575b4','0.5':'#74add1',
+                 '0.65':'#fdae61','0.8':'#f46d43','1.0':'#d73027'}}).addTo(map);
+  }
+  renderSidebar(v);
+  updateDateLabel(v.length);
+  updateSliderGradient();
+}
+
+function renderSidebar(v){
+  var title=document.getElementById('sb-hdr-title');
+  var cnt=document.getElementById('sb-hdr-count');
+  var list=document.getElementById('sb-list');
+  if(state.doy===0){
+    title.textContent='Daily Call Log'; cnt.textContent='';
+    list.innerHTML='<div class="sb-empty">Select a day in the timeline<br>to see the call log</div>';
+    return;
+  }
+  title.textContent=currentYear?fmtDate(state.doy,currentYear):'';
+  var n=v.length;
+  cnt.textContent=n+' incident'+(n!==1?'s':'');
+  if(n===0){list.innerHTML='<div class="sb-empty">No incidents recorded this day</div>';return;}
+  var sorted=v.slice().sort(function(a,b){return a.ts-b.ts;});
+  list.innerHTML=sorted.map(function(d,i){
+    var s=STYLE[d.ca]||STYLE.other;
+    var app=[d.sa?d.sa+' sup':'',d.ea?d.ea+' EMS':'',d.oa?d.oa+' other':''].filter(Boolean).join(' / ')||'0 app';
+    return '<div class="sb-card" data-idx="'+i+'">'
+      +'<div class="sbc-row1"><span class="sbc-time">'+(d.tm||'--:--')+'</span>'
+      +'<span class="sbc-badge">'+s.icon+' '+d.ty+'</span></div>'
+      +'<div class="sbc-desc">'+(d.de||'Unknown')+'</div>'
+      +'<div class="sbc-addr">&#x1F4CD; '+(d.ad||'&mdash;')+'</div>'
+      +'<div class="sbc-meta"><span>&#x1F692; '+app+'</span>'
+      +(d.du!=null?'<span>&#x23F1; '+d.du+' min</span>':'')
+      +'</div></div>';
+  }).join('');
+  sorted.forEach(function(d,i){
+    var card=list.querySelector('[data-idx="'+i+'"]');
+    if(!card)return;
+    card.addEventListener('click',function(){
+      list.querySelectorAll('.sb-card').forEach(function(c){c.classList.remove('active');});
+      card.classList.add('active');
+      var m=markerMap[d.ik];
+      if(m){
+        map.setView(m.getLatLng(),15,{animate:true});
+        m.openPopup();
+        var el=m.getElement();
+        if(el){el.classList.remove('bouncing');void el.offsetWidth;el.classList.add('bouncing');
+               setTimeout(function(){el.classList.remove('bouncing');},600);}
+      }
+    });
+  });
+}
+
+function updateDateLabel(cnt){
+  var lbl=document.getElementById('date-lbl');
+  var meta=document.getElementById('day-meta');
+  var warn=document.getElementById('warn-badge');
+  if(state.doy===0){
+    lbl.textContent='All '+(currentYear||'Year');
+    meta.textContent=cnt+' incidents shown';
+    warn.style.display='none';
+  }else{
+    lbl.textContent=currentYear?fmtDate(state.doy,currentYear):'';
+    meta.textContent=cnt+' incident'+(cnt!==1?'s':'');
+    var warnMos={};
+    (META.warnings||[]).forEach(function(w){
+      var m=w.match(/^(\w{3}) \d{4}:/);if(m)warnMos[m[1]]=1;
+    });
+    var mo=currentYear?doyToDate(state.doy,currentYear).getMonth()+1:0;
+    warn.style.display=warnMos[MO_SHORT[mo]]?'':'none';
+  }
+}
+
+var slider=document.getElementById('slider');
+function updateSliderGradient(){
+  if(state.doy===0){slider.style.background='#1e3a5f';return;}
+  var pct=(state.doy-state.rMin)/(state.rMax-state.rMin)*100;
+  slider.style.background='linear-gradient(to right,#3b82f6 '+pct+'%,#1e3a5f '+pct+'%)';
+}
+function setDay(doy){
+  state.doy=Math.max(state.rMin,Math.min(state.rMax,doy));
+  slider.value=state.doy; render();
+}
+slider.addEventListener('input',function(){setDay(+slider.value);});
+
+document.querySelectorAll('.mtab').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.mtab').forEach(function(b){b.classList.remove('active');});
+    btn.classList.add('active');
+    var m=+btn.dataset.month;
+    if(m===0){
+      state.rMin=1; state.rMax=META.days_in_year||366; state.doy=0;
+      slider.min=1; slider.max=state.rMax; slider.value=1; slider.disabled=true;
+      render();
+    }else if(MRANGE[m]){
+      var r=MRANGE[m]; state.rMin=r[0]; state.rMax=r[1];
+      slider.min=r[0]; slider.max=r[1]; slider.disabled=false;
+      setDay(r[0]);
+    }
+  });
+});
+
+document.getElementById('prev-btn').addEventListener('click',function(){
+  if(state.doy===0||state.doy<=state.rMin)return; setDay(state.doy-1);
+});
+document.getElementById('next-btn').addEventListener('click',function(){
+  if(state.doy===0){
+    state.doy=1; slider.disabled=false; slider.value=1;
+    document.querySelectorAll('.mtab').forEach(function(b){b.classList.remove('active');});
+    document.querySelector('.mtab[data-month="0"]').classList.add('active');
+    render(); return;
+  }
+  if(state.doy>=state.rMax)return; setDay(state.doy+1);
+});
+
+var playing=false,playTimer=null;
+var playBtn=document.getElementById('play-btn');
+playBtn.addEventListener('click',function(){
+  if(playing){clearInterval(playTimer);playing=false;playBtn.innerHTML='&#x25B6;';}
+  else{
+    playing=true; playBtn.innerHTML='&#x23F8;';
+    if(state.doy===0||state.doy>=state.rMax){slider.disabled=false;setDay(state.rMin);}
+    playTimer=setInterval(function(){
+      if(state.doy>=state.rMax){clearInterval(playTimer);playing=false;playBtn.innerHTML='&#x25B6;';return;}
+      setDay(state.doy+1);
+    },800);
+  }
+});
+
+document.getElementById('lt-markers').addEventListener('click',function(){
+  state.mode='markers';
+  document.getElementById('lt-markers').classList.add('active');
+  document.getElementById('lt-heat').classList.remove('active');
+  render();
+});
+document.getElementById('lt-heat').addEventListener('click',function(){
+  state.mode='heat';
+  document.getElementById('lt-heat').classList.add('active');
+  document.getElementById('lt-markers').classList.remove('active');
+  render();
+});
+
+function syncFilterUI(){
+  document.querySelectorAll('.fbtn[data-cat]').forEach(function(btn){
+    btn.classList.toggle('on',state.filters.has(btn.dataset.cat));
+  });
+  var cnt=state.filters.size;
+  var fc=document.getElementById('filter-count');
+  if(fc)fc.textContent='('+cnt+'/'+ALL_CATS.length+')';
+  var mb=document.getElementById('filter-mobile-btn');
+  if(mb)mb.classList.toggle('active',cnt>0&&cnt<ALL_CATS.length);
+}
+document.querySelectorAll('.fbtn[data-cat]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var c=btn.dataset.cat;
+    if(state.filters.has(c))state.filters.delete(c); else state.filters.add(c);
+    syncFilterUI(); render();
+  });
+});
+function setAllFilters(on){
+  if(on)ALL_CATS.forEach(function(c){state.filters.add(c);}); else state.filters.clear();
+  syncFilterUI(); render();
+}
+document.getElementById('btn-all').addEventListener('click',function(){setAllFilters(true);});
+document.getElementById('btn-none').addEventListener('click',function(){setAllFilters(false);});
+document.getElementById('fsh-btn-all').addEventListener('click',function(){setAllFilters(true);});
+document.getElementById('fsh-btn-none').addEventListener('click',function(){setAllFilters(false);});
+
+document.getElementById('filter-mobile-btn').addEventListener('click',function(){
+  document.getElementById('filter-modal').classList.add('open');
+});
+document.getElementById('fsh-close').addEventListener('click',function(){
+  document.getElementById('filter-modal').classList.remove('open');
+});
+document.getElementById('filter-modal').addEventListener('click',function(e){
+  if(e.target===document.getElementById('filter-modal'))
+    document.getElementById('filter-modal').classList.remove('open');
+});
+
+document.getElementById('sb-close-btn').addEventListener('click',function(){
+  document.getElementById('sidebar').classList.add('closed');
+  if(!isMobile)document.getElementById('sb-open-btn').style.display='flex';
+  setTimeout(function(){map.invalidateSize();},320);
+});
+document.getElementById('sb-open-btn').addEventListener('click',function(){
+  document.getElementById('sidebar').classList.remove('closed');
+  if(!isMobile)document.getElementById('sb-open-btn').style.display='none';
+  setTimeout(function(){map.invalidateSize();},320);
+});
+
+function showLoader(on,txt){
+  document.getElementById('loader-text').textContent=txt||'Loading...';
+  document.getElementById('loader').classList.toggle('on',on);
+}
+function showWarnings(warns){
+  var el=document.getElementById('data-warnings');
+  if(warns&&warns.length){el.innerHTML=warns.map(function(w){return'&#x26A0; '+w;}).join('<br>');el.style.display='';}
+  else{el.style.display='none';el.innerHTML='';}
+}
+function markWarnTabs(warns){
+  document.querySelectorAll('.mtab').forEach(function(t){t.classList.remove('warn-tab');});
+  (warns||[]).forEach(function(w){
+    var m=w.match(/^(\w{3}) \d{4}:/);
+    if(!m)return;
+    var mo=MO_SHORT.indexOf(m[1]);
+    if(mo>0){var tab=document.querySelector('.mtab[data-month="'+mo+'"]');
+             if(tab)tab.classList.add('warn-tab');}
+  });
+}
+function resetToAllYear(){
+  if(playing){clearInterval(playTimer);playing=false;playBtn.innerHTML='&#x25B6;';}
+  state.doy=0; state.rMin=1; state.rMax=META.days_in_year||366;
+  slider.min=1; slider.max=state.rMax; slider.value=1; slider.disabled=true;
+  document.querySelectorAll('.mtab').forEach(function(b){b.classList.remove('active');});
+  document.querySelector('.mtab[data-month="0"]').classList.add('active');
+  MRANGE=buildMRange(META.year||2024);
+  document.getElementById('date-lbl').textContent='All '+(META.year||'Year');
+}
+
+async function loadYear(deptId,year,manifestEntry){
+  showLoader(true,'Loading '+year+' data...');
+  try{
+    var r=await fetch('data/'+deptId+'_'+year+'.json');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var payload=await r.json();
+    if(Array.isArray(payload)){
+      var leap=(+year%4===0&&+year%100!==0)||(+year%400===0);
+      META={year:+year,days_in_year:leap?366:365,warnings:(manifestEntry&&manifestEntry.warnings)||[]};
+      DATA=payload;
+    }else{
+      META=payload.meta;
+      DATA=payload.incidents;
+    }
+    currentYear=META.year||+year; currentDeptId=deptId;
+    Object.keys(byDay).forEach(function(k){delete byDay[k];});
+    DATA.forEach(function(d){if(!byDay[d.dy])byDay[d.dy]=[];byDay[d.dy].push(d);});
+    document.getElementById('total-lbl').textContent=DATA.length.toLocaleString()+' incidents geocoded';
+    showWarnings(META.warnings||[]);
+    markWarnTabs(META.warnings||[]);
+    resetToAllYear();
+    render();
+  }catch(e){
+    showLoader(false);
+    document.getElementById('total-lbl').textContent='Error loading data';
+    console.error('loadYear:',e);
+    return;
+  }
+  showLoader(false);
+}
+
+(async function init(){
+  if(isMobile)document.getElementById('sidebar').classList.add('closed');
+  syncFilterUI();
+  showLoader(true,'Loading manifest...');
+  var manifest=null;
+  try{var r=await fetch('data/manifest.json');if(r.ok)manifest=await r.json();}
+  catch(e){console.warn('No manifest');}
+
+  var yrSel=document.getElementById('year-select');
+  var deptId='watertown_ct';
+  var yearMap={};
+  if(manifest&&manifest.departments&&manifest.departments.length){
+    var dept=manifest.departments[0];
+    deptId=dept.id;
+    document.getElementById('dept-name').textContent=dept.name.replace(/ Fire Dept(artment)?$/i,' FD');
+    document.getElementById('dept-meta').textContent='FDID '+dept.fdid+' &bull; '+dept.state+' &bull; NFIRS PDR';
+    var years=(dept.years||[]).slice().sort(function(a,b){return b.year-a.year;});
+    years.forEach(function(y){
+      var opt=document.createElement('option');
+      opt.value=y.year;
+      opt.textContent=y.year+(y.warnings&&y.warnings.length?' ⚠':'');
+      yrSel.appendChild(opt);
+    });
+    years.forEach(function(y){yearMap[y.year]=y;});
+  }else{
+    var opt=document.createElement('option');opt.value='2024';opt.textContent='2024';yrSel.appendChild(opt);
+  }
+  showLoader(false);
+  await loadYear(deptId,yrSel.value||'2024',yearMap[+(yrSel.value||'2024')]);
+  yrSel.addEventListener('change',function(){loadYear(deptId,yrSel.value,yearMap[+yrSel.value]);});
+})();
+</script>
+</body>
+</html>

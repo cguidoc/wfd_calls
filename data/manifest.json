@@ -1,0 +1,22 @@
+{
+  "version": "1.1",
+  "departments": [
+    {
+      "id": "watertown_ct",
+      "name": "Watertown Fire Dept",
+      "state": "CT",
+      "fdid": "01240",
+      "years": [
+        {
+          "year": 2024,
+          "file": "data/watertown_ct_2024.json",
+          "total": 2610,
+          "warnings": [
+            "Apr 2024: only 16 incidents recorded (avg 236/month) \u2014 data likely incomplete"
+          ]
+        }
+      ]
+    }
+  ],
+  "updated": "2026-05-10"
+}
