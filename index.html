@@ -233,6 +233,12 @@ body{display:flex;flex-direction:column}
   #year-select{font-size:11px;max-width:60px}
   .leaflet-popup-content-wrapper{min-width:200px}
   .leaflet-popup-content{font-size:13px;line-height:1.6}
+  .layer-toggle{top:12px;left:auto;right:12px;flex-direction:row;
+    background:rgba(13,17,23,.93);border:1px solid #1e3a5f;
+    border-radius:20px;padding:2px;gap:0}
+  .ltbtn{border-radius:16px!important;font-size:11px;padding:5px 9px;
+    min-height:36px;border:none!important;background:transparent!important}
+  .ltbtn.active{background:#1a2d47!important;color:#60a5fa!important}
 }
 </style>
 </head>
@@ -342,14 +348,15 @@ body{display:flex;flex-direction:column}
     <button class="step-btn" id="next-btn">&#x25B6;</button>
     <button id="play-btn" title="Play / Pause">&#x25B6;</button>
   </div>
-  <input id="slider" type="range" min="1" max="366" value="1" disabled>
+  <input id="slider" type="range" min="1" max="366" value="1" disabled list="slider-ticks">
+  <datalist id="slider-ticks"></datalist>
 </div>
 
 <script>
 var DATA=[],META={},MRANGE=[],currentYear=null,currentDeptId='watertown_ct';
 var byDay={};
 var ALL_CATS=['fire','ems','mva','hazmat','service','falsealarm','goodintent','weather','other'];
-var state={doy:0,rMin:1,rMax:366,mode:'markers',filters:new Set(ALL_CATS)};
+var state={doy:0,rMin:1,rMax:366,mode:'markers',viewMode:'all_year',filters:new Set(ALL_CATS)};
 var MNAMES=['','January','February','March','April','May','June','July','August','September','October','November','December'];
 var WNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 var MO_SHORT=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -365,6 +372,10 @@ function doyToDate(doy,year){var d=new Date(year,0,1);d.setDate(d.getDate()+doy-
 function fmtDate(doy,year){
   var d=doyToDate(doy,year);
   return WNAMES[d.getDay()]+', '+MNAMES[d.getMonth()+1]+' '+d.getDate()+', '+year;
+}
+function currentMonthIdx(){
+  for(var i=1;i<=12;i++){if(MRANGE[i]&&MRANGE[i][0]===state.rMin)return i;}
+  return 0;
 }
 
 var isMobile=window.innerWidth<768;
@@ -406,7 +417,14 @@ function mkPopup(d){
 
 var mkLayer=L.layerGroup().addTo(map),heatLayer=null,markerMap={};
 function visible(){
-  var src=state.doy===0?DATA:(byDay[state.doy]||[]);
+  var src;
+  if(state.viewMode==='all_year'){
+    src=DATA;
+  }else if(state.viewMode==='month'){
+    src=DATA.filter(function(d){return d.dy>=state.rMin&&d.dy<=state.rMax;});
+  }else{
+    src=byDay[state.doy]||[];
+  }
   return src.filter(function(d){return state.filters.has(d.ca);});
 }
 
@@ -437,14 +455,35 @@ function renderSidebar(v){
   var title=document.getElementById('sb-hdr-title');
   var cnt=document.getElementById('sb-hdr-count');
   var list=document.getElementById('sb-list');
-  if(state.doy===0){
+
+  if(state.viewMode==='all_year'){
     title.textContent='Daily Call Log'; cnt.textContent='';
-    list.innerHTML='<div class="sb-empty">Select a day in the timeline<br>to see the call log</div>';
+    list.innerHTML='<div class="sb-empty">Select a month or day<br>to see the call log</div>';
     return;
   }
-  title.textContent=currentYear?fmtDate(state.doy,currentYear):'';
+
   var n=v.length;
   cnt.textContent=n+' incident'+(n!==1?'s':'');
+
+  if(state.viewMode==='month'){
+    var mIdx=currentMonthIdx();
+    title.textContent=(mIdx?MNAMES[mIdx]:'Month')+' '+(currentYear||'');
+    if(n===0){list.innerHTML='<div class="sb-empty">No incidents this month</div>';return;}
+    var cats={};
+    v.forEach(function(d){cats[d.ca]=(cats[d.ca]||0)+1;});
+    var rows=ALL_CATS.filter(function(c){return cats[c]>0;}).map(function(c){
+      var s=STYLE[c]||STYLE.other;
+      return '<div class="sb-card" style="cursor:default">'
+        +'<div class="sbc-row1">'
+        +'<span class="sbc-badge">'+s.icon+'&nbsp;'+c.charAt(0).toUpperCase()+c.slice(1)+'</span>'
+        +'<span class="sbc-time" style="font-size:15px;color:#e2e8f0">'+cats[c]+'</span>'
+        +'</div></div>';
+    });
+    list.innerHTML='<div class="sb-empty" style="padding:6px 0 4px;color:#60a5fa;font-size:11px">Use slider to view a specific day</div>'+rows.join('');
+    return;
+  }
+
+  title.textContent=currentYear?fmtDate(state.doy,currentYear):'';
   if(n===0){list.innerHTML='<div class="sb-empty">No incidents recorded this day</div>';return;}
   var sorted=v.slice().sort(function(a,b){return a.ts-b.ts;});
   list.innerHTML=sorted.map(function(d,i){
@@ -481,17 +520,22 @@ function updateDateLabel(cnt){
   var lbl=document.getElementById('date-lbl');
   var meta=document.getElementById('day-meta');
   var warn=document.getElementById('warn-badge');
-  if(state.doy===0){
+  if(state.viewMode==='all_year'){
     lbl.textContent='All '+(currentYear||'Year');
     meta.textContent=cnt+' incidents shown';
     warn.style.display='none';
+  }else if(state.viewMode==='month'){
+    var mIdx=currentMonthIdx();
+    lbl.textContent=(mIdx?MNAMES[mIdx]:'Month')+' '+(currentYear||'');
+    meta.textContent=cnt+' incidents';
+    var warnMos={};
+    (META.warnings||[]).forEach(function(w){var m=w.match(/^(\w{3}) \d{4}:/);if(m)warnMos[m[1]]=1;});
+    warn.style.display=warnMos[MO_SHORT[mIdx]]?'':'none';
   }else{
     lbl.textContent=currentYear?fmtDate(state.doy,currentYear):'';
     meta.textContent=cnt+' incident'+(cnt!==1?'s':'');
     var warnMos={};
-    (META.warnings||[]).forEach(function(w){
-      var m=w.match(/^(\w{3}) \d{4}:/);if(m)warnMos[m[1]]=1;
-    });
+    (META.warnings||[]).forEach(function(w){var m=w.match(/^(\w{3}) \d{4}:/);if(m)warnMos[m[1]]=1;});
     var mo=currentYear?doyToDate(state.doy,currentYear).getMonth()+1:0;
     warn.style.display=warnMos[MO_SHORT[mo]]?'':'none';
   }
@@ -499,13 +543,27 @@ function updateDateLabel(cnt){
 
 var slider=document.getElementById('slider');
 function updateSliderGradient(){
-  if(state.doy===0){slider.style.background='#1e3a5f';return;}
+  if(state.viewMode!=='day'){slider.style.background='#1e3a5f';return;}
   var pct=(state.doy-state.rMin)/(state.rMax-state.rMin)*100;
   slider.style.background='linear-gradient(to right,#3b82f6 '+pct+'%,#1e3a5f '+pct+'%)';
 }
+function updateSliderTicks(min,max){
+  var dl=document.getElementById('slider-ticks');
+  if(!dl)return;
+  dl.innerHTML='';
+  if(!min)return;
+  for(var i=min;i<=max;i++){
+    var opt=document.createElement('option');
+    opt.value=i;
+    dl.appendChild(opt);
+  }
+}
 function setDay(doy){
   state.doy=Math.max(state.rMin,Math.min(state.rMax,doy));
-  slider.value=state.doy; render();
+  state.viewMode='day';
+  slider.value=state.doy;
+  if(isMobile)document.getElementById('sidebar').classList.remove('closed');
+  render();
 }
 slider.addEventListener('input',function(){setDay(+slider.value);});
 
@@ -515,28 +573,37 @@ document.querySelectorAll('.mtab').forEach(function(btn){
     btn.classList.add('active');
     var m=+btn.dataset.month;
     if(m===0){
-      state.rMin=1; state.rMax=META.days_in_year||366; state.doy=0;
+      state.rMin=1; state.rMax=META.days_in_year||366; state.doy=0; state.viewMode='all_year';
       slider.min=1; slider.max=state.rMax; slider.value=1; slider.disabled=true;
+      updateSliderTicks(0);
       render();
     }else if(MRANGE[m]){
       var r=MRANGE[m]; state.rMin=r[0]; state.rMax=r[1];
       slider.min=r[0]; slider.max=r[1]; slider.disabled=false;
-      setDay(r[0]);
+      slider.value=r[0]; state.doy=r[0]; state.viewMode='month';
+      updateSliderTicks(r[0],r[1]);
+      if(isMobile)document.getElementById('sidebar').classList.remove('closed');
+      render();
     }
   });
 });
 
 document.getElementById('prev-btn').addEventListener('click',function(){
-  if(state.doy===0||state.doy<=state.rMin)return; setDay(state.doy-1);
+  if(state.viewMode==='all_year')return;
+  if(state.viewMode==='month'){setDay(state.rMin);return;}
+  if(state.doy<=state.rMin)return;
+  setDay(state.doy-1);
 });
 document.getElementById('next-btn').addEventListener('click',function(){
-  if(state.doy===0){
-    state.doy=1; slider.disabled=false; slider.value=1;
+  if(state.viewMode==='all_year'){
+    state.viewMode='day'; slider.disabled=false; slider.value=1;
     document.querySelectorAll('.mtab').forEach(function(b){b.classList.remove('active');});
     document.querySelector('.mtab[data-month="0"]').classList.add('active');
-    render(); return;
+    setDay(1); return;
   }
-  if(state.doy>=state.rMax)return; setDay(state.doy+1);
+  if(state.viewMode==='month'){setDay(state.rMin);return;}
+  if(state.doy>=state.rMax)return;
+  setDay(state.doy+1);
 });
 
 var playing=false,playTimer=null;
@@ -545,7 +612,7 @@ playBtn.addEventListener('click',function(){
   if(playing){clearInterval(playTimer);playing=false;playBtn.innerHTML='&#x25B6;';}
   else{
     playing=true; playBtn.innerHTML='&#x23F8;';
-    if(state.doy===0||state.doy>=state.rMax){slider.disabled=false;setDay(state.rMin);}
+    if(state.viewMode!=='day'||state.doy>=state.rMax){slider.disabled=false;setDay(state.rMin);}
     playTimer=setInterval(function(){
       if(state.doy>=state.rMax){clearInterval(playTimer);playing=false;playBtn.innerHTML='&#x25B6;';return;}
       setDay(state.doy+1);
@@ -635,8 +702,9 @@ function markWarnTabs(warns){
 }
 function resetToAllYear(){
   if(playing){clearInterval(playTimer);playing=false;playBtn.innerHTML='&#x25B6;';}
-  state.doy=0; state.rMin=1; state.rMax=META.days_in_year||366;
+  state.doy=0; state.rMin=1; state.rMax=META.days_in_year||366; state.viewMode='all_year';
   slider.min=1; slider.max=state.rMax; slider.value=1; slider.disabled=true;
+  updateSliderTicks(0);
   document.querySelectorAll('.mtab').forEach(function(b){b.classList.remove('active');});
   document.querySelector('.mtab[data-month="0"]').classList.add('active');
   MRANGE=buildMRange(META.year||2024);
