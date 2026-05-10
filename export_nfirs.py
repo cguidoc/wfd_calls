@@ -12,10 +12,13 @@ Pass --gpkg to override the default GeoPackage path; year defaults to the
 import argparse
 import json
 import math
+import os
 import re
 import sqlite3
+import statistics
 import struct
 import sys
+from collections import Counter
 from datetime import date
 
 
@@ -230,6 +233,100 @@ def export(gpkg_path, state, fdid, year, out_path):
         json.dump(incidents, f, indent=2)
     print(f"Written to {out_path}")
 
+    stats = analyze(incidents)
+    stats_path = re.sub(r'\.json$', '_stats.json', out_path)
+    with open(stats_path, 'w', encoding='utf-8') as f:
+        json.dump(stats, f, indent=2)
+    print(f"Stats written to {stats_path}")
+
+
+# ---------------------------------------------------------------------------
+# Post-export analytics
+# ---------------------------------------------------------------------------
+DOW_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+
+def analyze(incidents):
+    if not incidents:
+        return {}
+
+    total = len(incidents)
+
+    # --- category counts ---
+    cat_counts = Counter(r['ca'] for r in incidents)
+
+    # --- month / hour / day-of-week distributions ---
+    month_counts = Counter(r['mo'] for r in incidents)
+    hour_counts  = Counter(int(r['ts'] // 60) for r in incidents if r['ts'] is not None)
+    dow_counts   = Counter(
+        DOW_NAMES[date.fromisoformat(r['dt']).weekday()]
+        for r in incidents
+    )
+
+    # --- date range ---
+    dates = sorted(r['dt'] for r in incidents)
+
+    # --- busiest single day ---
+    day_counts = Counter(r['dt'] for r in incidents)
+    busiest_date, busiest_count = day_counts.most_common(1)[0]
+
+    # --- top addresses (skip None) ---
+    addr_counts = Counter(r['ad'] for r in incidents if r['ad'])
+    top_addresses = [
+        {'address': addr, 'count': cnt}
+        for addr, cnt in addr_counts.most_common(10)
+    ]
+
+    # --- top incident types ---
+    type_counter = Counter((r['ty'], r['de']) for r in incidents if r['ty'])
+    top_types = [
+        {'type': ty, 'description': de, 'count': cnt}
+        for (ty, de), cnt in type_counter.most_common(15)
+    ]
+
+    # --- apparatus stats ---
+    ap_values = [r['ap'] for r in incidents]
+    max_ap    = max(ap_values)
+    max_ap_incident = next(
+        {'ik': r['ik'], 'dt': r['dt'], 'ad': r['ad'], 'ca': r['ca'],
+         'de': r['de'], 'ap': r['ap'], 'sa': r['sa'], 'ea': r['ea'], 'oa': r['oa']}
+        for r in incidents if r['ap'] == max_ap
+    )
+    avg_ap = round(sum(ap_values) / total, 2)
+    multi_ap_calls = sum(1 for v in ap_values if v > 1)
+
+    # --- duration stats ---
+    durations = [r['du'] for r in incidents if r['du'] is not None]
+    dur_stats = None
+    if durations:
+        dur_stats = {
+            'calls_with_data': len(durations),
+            'avg_minutes':    round(statistics.mean(durations), 1),
+            'median_minutes': round(statistics.median(durations), 1),
+            'max_minutes':    max(durations),
+            'min_minutes':    min(durations),
+        }
+
+    return {
+        'generated':    date.today().isoformat(),
+        'total_calls':  total,
+        'date_range':   {'first': dates[0], 'last': dates[-1]},
+        'calls_by_category': dict(sorted(cat_counts.items())),
+        'calls_by_month':    {str(m): month_counts.get(m, 0) for m in range(1, 13)},
+        'calls_by_hour':     {str(h): hour_counts.get(h, 0)  for h in range(24)},
+        'calls_by_dow':      {d: dow_counts.get(d, 0) for d in DOW_NAMES},
+        'busiest_day':       {'date': busiest_date, 'count': busiest_count},
+        'top_addresses':     top_addresses,
+        'top_incident_types': top_types,
+        'apparatus': {
+            'avg_per_call':           avg_ap,
+            'max_single_call':        max_ap,
+            'max_single_call_record': max_ap_incident,
+            'multi_apparatus_calls':  multi_ap_calls,
+        },
+        'duration': dur_stats,
+    }
+
 
 # ---------------------------------------------------------------------------
 def prompt(label, default):
@@ -238,55 +335,127 @@ def prompt(label, default):
 
 
 def pick_department(conn, state, town):
+    """Return list of (fdid, name) if fdheader exists, else None."""
     cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fdheader'")
+    if not cur.fetchone():
+        return None
     cur.execute(
         "SELECT FDID, FD_NAME FROM fdheader WHERE STATE=? AND FD_NAME LIKE ? ORDER BY FD_NAME",
         (state.upper(), f"%{town.upper()}%"),
     )
-    rows = cur.fetchall()
-    return rows
+    return cur.fetchall()
+
+
+def list_fdids(conn, state):
+    """Return sorted list of FDIDs present in basicincident for this state."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT FDID FROM basicincident WHERE STATE=? ORDER BY FDID",
+        (state.upper(),),
+    )
+    return [r[0] for r in cur.fetchall()]
+
+
+def find_gpkg_files(search_dir='data'):
+    """Recursively find non-empty .gpkg files under search_dir."""
+    results = []
+    for root, _dirs, files in os.walk(search_dir):
+        for name in files:
+            if name.lower().endswith('.gpkg'):
+                full = os.path.join(root, name)
+                if os.path.getsize(full) > 0:
+                    results.append(full)
+    return sorted(results)
 
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description="Export NFIRS GPKG → fire_vis JSON")
-    p.add_argument('--gpkg', default=r'data\nfirs_pdr_2024_gpkg\NFIRS_PDR_2024.gpkg')
+    p.add_argument('--gpkg', help="Path to GeoPackage file (skips file picker)")
+    p.add_argument('--fdid', help="Skip department lookup and use this FDID directly")
     args = p.parse_args()
 
+    # Resolve the GPKG to use
+    if args.gpkg:
+        gpkg_path = args.gpkg
+        if not os.path.isfile(gpkg_path):
+            print(f"Error: file not found: {gpkg_path}", file=sys.stderr)
+            sys.exit(1)
+        if os.path.getsize(gpkg_path) == 0:
+            print(f"Error: file is empty (0 bytes): {gpkg_path}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        gpkg_files = find_gpkg_files()
+        if not gpkg_files:
+            print("No .gpkg files found under data\\.  Pass --gpkg to specify a path.", file=sys.stderr)
+            sys.exit(1)
+        if len(gpkg_files) == 1:
+            gpkg_path = gpkg_files[0]
+            print(f"Using: {gpkg_path}")
+        else:
+            print("GeoPackage files found:")
+            for i, f in enumerate(gpkg_files, 1):
+                print(f"  {i}) {f}")
+            while True:
+                choice = input(f"Select file [1-{len(gpkg_files)}]: ").strip()
+                if choice.isdigit() and 1 <= int(choice) <= len(gpkg_files):
+                    gpkg_path = gpkg_files[int(choice) - 1]
+                    break
+                print("  Invalid choice, try again.")
+
     # Default year from the year embedded in the GPKG filename
-    m = re.search(r'(\d{4})', args.gpkg)
+    m = re.search(r'(\d{4})', os.path.basename(gpkg_path))
     default_year = m.group(1) if m else '2024'
 
     state = prompt("State", "CT")
     town  = prompt("Town / department name", "Watertown")
     year  = prompt("Year", default_year)
 
-    conn = sqlite3.connect(args.gpkg)
-    matches = pick_department(conn, state, town)
-    conn.close()
-
-    if not matches:
-        print(f"No departments found in {state.upper()} matching '{town}'.")
-        sys.exit(1)
-
-    if len(matches) == 1:
-        fdid, fd_name = matches[0]
-        print(f"  Found: {fd_name}  (FDID {fdid})")
-        confirm = input("Use this department? [Y/n]: ").strip().lower()
-        if confirm == 'n':
-            sys.exit(0)
+    if args.fdid:
+        fdid = args.fdid
     else:
-        print(f"\n{len(matches)} departments found — pick one:")
-        for i, (fdid, fd_name) in enumerate(matches, 1):
-            print(f"  {i}) {fd_name}  (FDID {fdid})")
-        while True:
-            choice = input(f"Enter number [1-{len(matches)}]: ").strip()
-            if choice.isdigit() and 1 <= int(choice) <= len(matches):
-                fdid, fd_name = matches[int(choice) - 1]
-                break
-            print("  Invalid choice, try again.")
+        conn = sqlite3.connect(gpkg_path)
+        matches = pick_department(conn, state, town)
+
+        if matches is None:
+            # fdheader table not in this GPKG — show available FDIDs and ask
+            fdids = list_fdids(conn, state)
+            conn.close()
+            if not fdids:
+                print(f"No incidents found for state {state.upper()} in this file.")
+                sys.exit(1)
+            print(f"\nfdheader table not available in this GeoPackage.")
+            print(f"FDIDs with data for {state.upper()} ({len(fdids)} total):")
+            for fid in fdids:
+                print(f"  {fid}")
+            fdid = input("Enter FDID: ").strip()
+            if not fdid:
+                sys.exit(1)
+        else:
+            conn.close()
+            if not matches:
+                print(f"No departments found in {state.upper()} matching '{town}'.")
+                sys.exit(1)
+
+            if len(matches) == 1:
+                fdid, fd_name = matches[0]
+                print(f"  Found: {fd_name}  (FDID {fdid})")
+                confirm = input("Use this department? [Y/n]: ").strip().lower()
+                if confirm == 'n':
+                    sys.exit(0)
+            else:
+                print(f"\n{len(matches)} departments found — pick one:")
+                for i, (fid, fd_name) in enumerate(matches, 1):
+                    print(f"  {i}) {fd_name}  (FDID {fid})")
+                while True:
+                    choice = input(f"Enter number [1-{len(matches)}]: ").strip()
+                    if choice.isdigit() and 1 <= int(choice) <= len(matches):
+                        fdid, fd_name = matches[int(choice) - 1]
+                        break
+                    print("  Invalid choice, try again.")
 
     slug = re.sub(r'\s+', '_', town.strip().lower())
     out_path = fr'data\{slug}_{state.lower()}_{year}.json'
     out_path = prompt("Output file", out_path)
 
-    export(args.gpkg, state.upper(), fdid, year, out_path)
+    export(gpkg_path, state.upper(), fdid, year, out_path)

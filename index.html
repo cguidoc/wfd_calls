@@ -199,6 +199,48 @@ body{display:flex;flex-direction:column}
   color:#60a5fa;border-radius:8px;padding:13px;font-size:14px;
   cursor:pointer;font-weight:600}
 
+/* View tab switcher */
+#view-tabs{flex:0 0 auto;display:flex;background:#0d1117;border-bottom:1px solid #1e3a5f;
+  padding:0 14px;min-height:38px}
+.vtab{background:none;border:none;border-bottom:2px solid transparent;
+  color:#4b5563;font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer;
+  transition:color .15s,border-color .15s;white-space:nowrap}
+.vtab:hover{color:#9ca3af}
+.vtab.active{color:#60a5fa;border-bottom-color:#3b82f6}
+
+/* Stats view */
+#stats-view{display:none;flex:1 1 0;overflow-y:auto;background:#0d1117;padding:16px 20px}
+#stats-inner{max-width:900px;margin:0 auto}
+.stats-section{margin-bottom:22px}
+.stats-sec-title{font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid #1e3a5f}
+.stats-cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px;margin-bottom:20px}
+.stat-card{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:12px 14px}
+.stat-card-val{font-size:22px;font-weight:700;color:#60a5fa;line-height:1.2}
+.stat-card-lbl{font-size:11px;color:#4b5563;margin-top:4px}
+.bar-chart{display:flex;flex-direction:column;gap:5px}
+.bar-row{display:flex;align-items:center;gap:8px}
+.bar-lbl{font-size:11px;color:#6b7280;width:80px;text-align:right;flex-shrink:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{flex:1;background:#1a2233;border-radius:3px;height:16px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px}
+.bar-val{font-size:11px;color:#9ca3af;width:38px;flex-shrink:0;text-align:right;
+  font-variant-numeric:tabular-nums}
+.stats-two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hour-chart-wrap{display:flex;flex-direction:column;gap:4px}
+.hour-bars{display:flex;align-items:flex-end;height:72px;gap:2px;border-bottom:1px solid #1e3a5f}
+.hour-bar-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
+.hour-bar-inner{width:100%;min-height:2px;border-radius:2px 2px 0 0}
+.hour-lbls{display:flex;gap:2px}
+.hour-lbl-item{flex:1;font-size:8px;color:#374151;text-align:center}
+.top-list{display:flex;flex-direction:column;gap:4px}
+.top-row{display:flex;align-items:center;gap:8px;background:#111827;
+  border:1px solid #1e3a5f;border-radius:6px;padding:6px 10px}
+.top-rank{font-size:11px;color:#374151;width:18px;flex-shrink:0;text-align:right}
+.top-lbl{flex:1;font-size:11px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top-val{font-size:12px;color:#60a5fa;font-weight:700;flex-shrink:0}
+
 /* Mobile (<=767px) */
 @media(max-width:767px){
   html,body{overflow-x:hidden}
@@ -248,6 +290,10 @@ body{display:flex;flex-direction:column}
   .ltbtn{border-radius:16px!important;font-size:11px;padding:5px 9px;
     min-height:36px;border:none!important;background:transparent!important}
   .ltbtn.active{background:#1a2d47!important;color:#60a5fa!important}
+  .stats-two-col{grid-template-columns:1fr}
+  #stats-view{padding:10px 12px}
+  .bar-lbl{width:52px}
+  .vtab{padding:7px 12px;font-size:12px}
   #sb-min-btn{display:none!important}
   #sb-close-btn{display:flex!important;align-items:center;justify-content:center;
     font-size:18px;min-width:44px;min-height:44px}
@@ -283,6 +329,11 @@ body{display:flex;flex-direction:column}
     </div>
     <button id="fsh-close">Done</button>
   </div>
+</div>
+
+<div id="view-tabs">
+  <button class="vtab active" id="vt-map">&#x1F5FA; Map</button>
+  <button class="vtab" id="vt-stats">&#x1F4CA; Stats</button>
 </div>
 
 <div id="filter-bar">
@@ -364,6 +415,10 @@ body{display:flex;flex-direction:column}
   <input id="slider" type="range" min="1" max="366" value="1" disabled list="slider-ticks">
   <div id="sticks"></div>
   <datalist id="slider-ticks"></datalist>
+</div>
+
+<div id="stats-view">
+  <div id="stats-inner"></div>
 </div>
 
 <script>
@@ -814,6 +869,8 @@ async function loadYear(deptId,year,manifestEntry){
     console.error('loadYear:',e);
     return;
   }
+  currentStats=null;currentStatsYear=null;
+  if(document.getElementById('stats-view').style.display!=='none'){loadStats(deptId,currentYear);}
   showLoader(false);
 }
 
@@ -851,6 +908,147 @@ async function loadYear(deptId,year,manifestEntry){
   await loadYear(deptId,yrSel.value||'2024',yearMap[+(yrSel.value||'2024')]);
   yrSel.addEventListener('change',function(){loadYear(deptId,yrSel.value,yearMap[+yrSel.value]);});
 })();
+
+/* ---- Stats view ---- */
+var currentStats=null,currentStatsYear=null;
+var ST_BG={fire:'#dc2626',ems:'#1d4ed8',mva:'#c2410c',hazmat:'#92400e',
+  service:'#5b21b6',falsealarm:'#374151',goodintent:'#4b5563',weather:'#1d4ed8',other:'#1e3a5f'};
+var ST_ICO={fire:'&#x1F525;',ems:'&#x271A;',mva:'&#x1F697;',hazmat:'&#x26A0;',
+  service:'&#x1F527;',falsealarm:'&#x2717;',goodintent:'&#x1F6AB;',weather:'&#x26C8;',other:'&middot;'};
+var STA_MO=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var STA_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function fmtStatDate(ds){var p=ds.split('-');return STA_MO[+p[1]]+' '+parseInt(p[2],10);}
+function scard(val,lbl){
+  return '<div class="stat-card"><div class="stat-card-val">'+val+'</div><div class="stat-card-lbl">'+lbl+'</div></div>';
+}
+
+function switchToStats(){
+  document.getElementById('filter-bar').style.display='none';
+  document.getElementById('main').style.display='none';
+  document.getElementById('timeline').style.display='none';
+  document.getElementById('stats-view').style.display='block';
+  document.getElementById('vt-map').classList.remove('active');
+  document.getElementById('vt-stats').classList.add('active');
+  if(currentYear&&currentYear!==currentStatsYear){loadStats(currentDeptId,currentYear);}
+}
+function switchToMap(){
+  document.getElementById('filter-bar').style.display='';
+  document.getElementById('main').style.display='';
+  document.getElementById('timeline').style.display='';
+  document.getElementById('stats-view').style.display='none';
+  document.getElementById('vt-map').classList.add('active');
+  document.getElementById('vt-stats').classList.remove('active');
+  setTimeout(function(){map.invalidateSize();},50);
+}
+document.getElementById('vt-map').addEventListener('click',switchToMap);
+document.getElementById('vt-stats').addEventListener('click',switchToStats);
+
+async function loadStats(deptId,year){
+  document.getElementById('stats-inner').innerHTML='<div style="color:#4b5563;text-align:center;padding:40px;font-size:13px">Loading stats&hellip;</div>';
+  try{
+    var r=await fetch('data/'+deptId+'_'+year+'_stats.json');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    currentStats=await r.json();
+    currentStatsYear=year;
+    renderStats(currentStats,year);
+  }catch(e){
+    document.getElementById('stats-inner').innerHTML='<div style="color:#4b5563;text-align:center;padding:40px;font-size:13px">No stats available for '+year+'</div>';
+  }
+}
+
+function renderStats(s,year){
+  var el=document.getElementById('stats-inner');
+  var html='';
+
+  // Summary cards
+  html+='<div class="stats-section"><div class="stats-sec-title">Summary &mdash; '+year+'</div>';
+  html+='<div class="stats-cards-grid">';
+  html+=scard(s.total_calls.toLocaleString(),'Total Incidents');
+  html+=scard(s.duration.avg_minutes+' min','Avg Call Duration');
+  html+=scard(s.apparatus.avg_per_call.toFixed(1),'Avg Apparatus / Call');
+  var bd=s.busiest_day;
+  html+=scard(bd?fmtStatDate(bd.date)+' ('+bd.count+' calls)':'&mdash;','Busiest Day');
+  html+='</div></div>';
+
+  // By category
+  html+='<div class="stats-section"><div class="stats-sec-title">Incidents by Category</div><div class="bar-chart">';
+  var cats=Object.entries(s.calls_by_category).sort(function(a,b){return b[1]-a[1];});
+  var maxCat=cats.length?cats[0][1]:1;
+  cats.forEach(function(e){
+    var ca=e[0],n=e[1];
+    var pct=(n/maxCat*100).toFixed(1);
+    var lbl=ca.charAt(0).toUpperCase()+ca.slice(1);
+    html+='<div class="bar-row"><div class="bar-lbl">'+(ST_ICO[ca]||'&middot;')+' '+lbl+'</div>'
+      +'<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+(ST_BG[ca]||'#1e3a5f')+'"></div></div>'
+      +'<div class="bar-val">'+n.toLocaleString()+'</div></div>';
+  });
+  html+='</div></div>';
+
+  // Hour of day chart (vertical bars)
+  html+='<div class="stats-section"><div class="stats-sec-title">Incidents by Hour of Day</div>';
+  html+='<div class="hour-chart-wrap"><div class="hour-bars">';
+  var byHr=s.calls_by_hour;
+  var maxHr=Math.max.apply(null,Object.values(byHr).map(Number));
+  for(var h=0;h<24;h++){
+    var hn=+(byHr[h]||0);
+    var hpct=maxHr>0?(hn/maxHr*100).toFixed(1):0;
+    var hlbl=h===0?'12am':h<12?h+'am':h===12?'12pm':(h-12)+'pm';
+    html+='<div class="hour-bar-col"><div class="hour-bar-inner" style="height:'+hpct+'%;background:#06b6d4" title="'+hlbl+' - '+hn+' calls"></div></div>';
+  }
+  html+='</div><div class="hour-lbls">';
+  for(var hj=0;hj<24;hj++){
+    var hjl=hj===0?'12a':hj<12?hj+'a':hj===12?'12p':(hj-12)+'p';
+    html+='<div class="hour-lbl-item">'+hjl+'</div>';
+  }
+  html+='</div></div></div>';
+
+  // Two col: by month + by day of week
+  html+='<div class="stats-two-col">';
+  html+='<div class="stats-section"><div class="stats-sec-title">By Month</div><div class="bar-chart">';
+  var byMo=s.calls_by_month;
+  var maxMo=Math.max.apply(null,Object.values(byMo).map(Number));
+  for(var m=1;m<=12;m++){
+    var mn=+(byMo[m]||0);
+    var mpct=maxMo>0?(mn/maxMo*100).toFixed(1):0;
+    html+='<div class="bar-row"><div class="bar-lbl">'+STA_MO[m]+'</div>'
+      +'<div class="bar-track"><div class="bar-fill" style="width:'+mpct+'%;background:#3b82f6"></div></div>'
+      +'<div class="bar-val">'+mn+'</div></div>';
+  }
+  html+='</div></div>';
+  html+='<div class="stats-section"><div class="stats-sec-title">By Day of Week</div><div class="bar-chart">';
+  var byDow=s.calls_by_dow;
+  var maxDow=Math.max.apply(null,Object.values(byDow).map(Number));
+  STA_DOW.forEach(function(d){
+    var dn=+(byDow[d]||0);
+    var dpct=maxDow>0?(dn/maxDow*100).toFixed(1):0;
+    html+='<div class="bar-row"><div class="bar-lbl">'+d+'</div>'
+      +'<div class="bar-track"><div class="bar-fill" style="width:'+dpct+'%;background:#8b5cf6"></div></div>'
+      +'<div class="bar-val">'+dn+'</div></div>';
+  });
+  html+='</div></div>';
+  html+='</div>';
+
+  // Two col: top locations + top incident types
+  html+='<div class="stats-two-col">';
+  html+='<div class="stats-section"><div class="stats-sec-title">Top Locations</div><div class="top-list">';
+  (s.top_addresses||[]).slice(0,8).forEach(function(a,i){
+    html+='<div class="top-row"><div class="top-rank">'+(i+1)+'</div>'
+      +'<div class="top-lbl" title="'+a.address+'">'+a.address+'</div>'
+      +'<div class="top-val">'+a.count+'</div></div>';
+  });
+  html+='</div></div>';
+  html+='<div class="stats-section"><div class="stats-sec-title">Top Incident Types</div><div class="top-list">';
+  (s.top_incident_types||[]).slice(0,8).forEach(function(t,i){
+    html+='<div class="top-row"><div class="top-rank">'+(i+1)+'</div>'
+      +'<div class="top-lbl" title="'+t.description+'"><b style="color:#9ca3af">'+t.type+'</b> '+t.description+'</div>'
+      +'<div class="top-val">'+t.count+'</div></div>';
+  });
+  html+='</div></div>';
+  html+='</div>';
+
+  el.innerHTML=html;
+}
 </script>
 </body>
 </html>

@@ -1,0 +1,212 @@
+{
+  "generated": "2026-05-09",
+  "total_calls": 667,
+  "date_range": {
+    "first": "2023-01-01",
+    "last": "2023-03-31"
+  },
+  "calls_by_category": {
+    "ems": 520,
+    "falsealarm": 65,
+    "goodintent": 13,
+    "hazmat": 30,
+    "mva": 24,
+    "service": 5,
+    "weather": 10
+  },
+  "calls_by_month": {
+    "1": 224,
+    "2": 203,
+    "3": 240,
+    "4": 0,
+    "5": 0,
+    "6": 0,
+    "7": 0,
+    "8": 0,
+    "9": 0,
+    "10": 0,
+    "11": 0,
+    "12": 0
+  },
+  "calls_by_hour": {
+    "0": 14,
+    "1": 16,
+    "2": 14,
+    "3": 11,
+    "4": 9,
+    "5": 15,
+    "6": 15,
+    "7": 23,
+    "8": 33,
+    "9": 38,
+    "10": 44,
+    "11": 37,
+    "12": 44,
+    "13": 35,
+    "14": 24,
+    "15": 43,
+    "16": 42,
+    "17": 39,
+    "18": 28,
+    "19": 31,
+    "20": 40,
+    "21": 26,
+    "22": 28,
+    "23": 18
+  },
+  "calls_by_dow": {
+    "Mon": 101,
+    "Tue": 94,
+    "Wed": 98,
+    "Thu": 98,
+    "Fri": 95,
+    "Sat": 94,
+    "Sun": 87
+  },
+  "busiest_day": {
+    "date": "2023-02-04",
+    "count": 15
+  },
+  "top_addresses": [
+    {
+      "address": "655 Straits Tpke, Watertown",
+      "count": 41
+    },
+    {
+      "address": "560 Woodbury Rd, Watertown",
+      "count": 16
+    },
+    {
+      "address": "88 Cobb St, Oakville",
+      "count": 16
+    },
+    {
+      "address": "35 Bunker Hill Rd, Watertown",
+      "count": 15
+    },
+    {
+      "address": "1095 Middlebury Rd, Watertown",
+      "count": 13
+    },
+    {
+      "address": "110 Woodbury Rd, Watertown",
+      "count": 9
+    },
+    {
+      "address": "136 Morro St, Oakville",
+      "count": 8
+    },
+    {
+      "address": "118 Cannon Ridge Dr, Watertown",
+      "count": 7
+    },
+    {
+      "address": "100 Steele Brook Rd, Watertown",
+      "count": 6
+    },
+    {
+      "address": "935 Buckingham St, Watertown",
+      "count": 6
+    }
+  ],
+  "top_incident_types": [
+    {
+      "type": "321",
+      "description": "EMS call, excluding vehicle accident with injury",
+      "count": 517
+    },
+    {
+      "type": "745",
+      "description": "Alarm system sounded, no fire - unintentional",
+      "count": 50
+    },
+    {
+      "type": "322",
+      "description": "Vehicle accident with injuries",
+      "count": 24
+    },
+    {
+      "type": "746",
+      "description": "Carbon monoxide detector activation, no CO",
+      "count": 14
+    },
+    {
+      "type": "651",
+      "description": "Smoke scare, odor of smoke",
+      "count": 13
+    },
+    {
+      "type": "412",
+      "description": "Gas leak (natural gas or LPG)",
+      "count": 12
+    },
+    {
+      "type": "812",
+      "description": "Flood assessment",
+      "count": 10
+    },
+    {
+      "type": "411",
+      "description": "Gasoline or other flammable liquid spill",
+      "count": 8
+    },
+    {
+      "type": "424",
+      "description": "Carbon monoxide incident",
+      "count": 4
+    },
+    {
+      "type": "561",
+      "description": "Unauthorized burning",
+      "count": 3
+    },
+    {
+      "type": "440",
+      "description": "Electrical  wiring/equipment problem, other",
+      "count": 2
+    },
+    {
+      "type": "511",
+      "description": "Lock-out",
+      "count": 2
+    },
+    {
+      "type": "444",
+      "description": "Power line down",
+      "count": 2
+    },
+    {
+      "type": "351",
+      "description": "Extrication of victim(s) from building/structure",
+      "count": 1
+    },
+    {
+      "type": "743",
+      "description": "Smoke detector activation, no fire - unintentional",
+      "count": 1
+    }
+  ],
+  "apparatus": {
+    "avg_per_call": 1.84,
+    "max_single_call": 6,
+    "max_single_call_record": {
+      "ik": "CT_01240_01152023_0000103_0",
+      "dt": "2023-01-15",
+      "ad": "Park Rd, Watertown",
+      "ca": "ems",
+      "de": "Extrication, rescue, other",
+      "ap": 6,
+      "sa": 0,
+      "ea": 0,
+      "oa": 6
+    },
+    "multi_apparatus_calls": 396
+  },
+  "duration": {
+    "calls_with_data": 667,
+    "avg_minutes": 23.3,
+    "median_minutes": 22,
+    "max_minutes": 121,
+    "min_minutes": 4
+  }
+}

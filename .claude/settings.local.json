@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"c:\\\\dev\\\\fire_vis\\\\data\\\\nfirs_pdr_2024_gpkg\" -Force | ForEach-Object { \"$\\($_.Name\\) $\\($_.Length\\)\" })"
+    ]
+  }
+}
