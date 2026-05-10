@@ -152,6 +152,10 @@ body{display:flex;flex-direction:column}
 #slider::-moz-range-thumb{width:18px;height:18px;border:2px solid #0d1117;
   border-radius:50%;background:#3b82f6;cursor:pointer}
 #slider:disabled{opacity:.4;cursor:not-allowed}
+#sticks{display:none;justify-content:space-between;padding:0 9px;height:10px;margin-top:3px}
+.stk{flex:1;display:flex;justify-content:center;align-items:flex-start}
+.stk::after{content:'';display:block;width:1px;height:4px;background:#1e3a5f;border-radius:1px}
+.stk.stk-major::after{height:7px;background:#3b82f6;opacity:.6}
 
 /* Leaflet popup dark */
 .leaflet-popup-content-wrapper{background:#111827;border:1px solid #1e3a5f;
@@ -201,19 +205,23 @@ body{display:flex;flex-direction:column}
   #main{overflow:hidden}
   #filter-bar-btns{display:none!important}
   #filter-mobile-btn{display:flex!important}
-  #sb-drag-handle{display:block!important}
-  #sidebar{position:fixed!important;bottom:0!important;left:0!important;right:0!important;
-    width:100%!important;height:60vh;max-height:60vh;
-    border-left:none!important;border-right:none!important;
-    border-top:2px solid #1e3a5f;border-radius:16px 16px 0 0;
+  #sb-drag-handle{display:none!important}
+  #sidebar{position:fixed!important;top:0!important;right:0!important;bottom:0!important;
+    left:auto!important;width:80vw!important;max-width:300px!important;
+    height:100%!important;max-height:100%!important;
+    border-left:2px solid #1e3a5f!important;border-top:none!important;
+    border-radius:0!important;
     z-index:2000;opacity:1!important;
     transition:transform .3s cubic-bezier(.4,0,.2,1)!important}
-  #sidebar.closed{transform:translateY(100%);pointer-events:none!important;opacity:1!important}
-  #sidebar:not(.closed){transform:translateY(0)}
-  #sb-open-btn{position:fixed!important;bottom:110px!important;right:12px!important;
-    top:auto!important;transform:none!important;border-radius:50%!important;
-    border-right:1px solid #1e3a5f!important;writing-mode:horizontal-tb!important;
-    width:48px!important;height:48px!important;font-size:18px;padding:0!important}
+  #sidebar.closed{transform:translateX(100%)!important;pointer-events:none!important;opacity:1!important}
+  #sidebar:not(.closed){transform:translateX(0)!important}
+  #sb-open-btn{position:fixed!important;right:0!important;top:50%!important;
+    bottom:auto!important;transform:translateY(-50%)!important;
+    border-radius:6px 0 0 6px!important;border-right:none!important;
+    writing-mode:vertical-rl!important;width:32px!important;height:auto!important;
+    padding:14px 6px!important;font-size:15px!important;
+    background:#111827!important;box-shadow:-2px 0 12px rgba(0,0,0,.5)!important;
+    z-index:1999!important}
   .sbc-time{font-size:15px!important}
   .sbc-desc{font-size:14px!important}
   .sbc-addr{font-size:13px!important;white-space:normal!important}
@@ -240,12 +248,9 @@ body{display:flex;flex-direction:column}
   .ltbtn{border-radius:16px!important;font-size:11px;padding:5px 9px;
     min-height:36px;border:none!important;background:transparent!important}
   .ltbtn.active{background:#1a2d47!important;color:#60a5fa!important}
-  #sb-min-btn{display:flex!important;align-items:center;justify-content:center;
-    font-size:22px;min-width:48px;min-height:48px;color:#60a5fa!important}
-  #sb-close-btn{display:none!important}
-  #sb-open-btn{width:60px!important;height:60px!important;font-size:22px!important;
-    bottom:120px!important;border-right:1px solid #1e3a5f!important;
-    background:#111827!important;box-shadow:0 2px 12px rgba(0,0,0,.5)!important}
+  #sb-min-btn{display:none!important}
+  #sb-close-btn{display:flex!important;align-items:center;justify-content:center;
+    font-size:18px;min-width:44px;min-height:44px}
 }
 </style>
 </head>
@@ -357,6 +362,7 @@ body{display:flex;flex-direction:column}
     <button id="play-btn" title="Play / Pause">&#x25B6;</button>
   </div>
   <input id="slider" type="range" min="1" max="366" value="1" disabled list="slider-ticks">
+  <div id="sticks"></div>
   <datalist id="slider-ticks"></datalist>
 </div>
 
@@ -464,7 +470,7 @@ function render(){
         }
         activeMarkerKey=d.ik;
         m.setIcon(mkIconHighlighted(d.ca,d.ap));
-        openSidebar();
+        if(!isMobile)openSidebar();
         if(state.viewMode!=='day'||state.doy!==d.dy){
           pendingHighlightKey=d.ik;
           setDay(d.dy);
@@ -605,13 +611,22 @@ function updateSliderGradient(){
 }
 function updateSliderTicks(min,max){
   var dl=document.getElementById('slider-ticks');
-  if(!dl)return;
-  dl.innerHTML='';
-  if(!min)return;
-  for(var i=min;i<=max;i++){
-    var opt=document.createElement('option');
-    opt.value=i;
-    dl.appendChild(opt);
+  if(dl)dl.innerHTML='';
+  var vis=document.getElementById('sticks');
+  if(!min){if(vis){vis.innerHTML='';vis.style.display='none';}return;}
+  if(dl){
+    for(var i=min;i<=max;i++){
+      var opt=document.createElement('option');opt.value=i;dl.appendChild(opt);
+    }
+  }
+  if(vis){
+    vis.style.display='flex';vis.innerHTML='';
+    var cnt=max-min+1;
+    for(var j=0;j<cnt;j++){
+      var tk=document.createElement('div');
+      tk.className='stk'+(j===0||j===cnt-1||j%5===4?' stk-major':'');
+      vis.appendChild(tk);
+    }
   }
 }
 function openSidebar(){
@@ -621,7 +636,6 @@ function setDay(doy){
   state.doy=Math.max(state.rMin,Math.min(state.rMax,doy));
   state.viewMode='day';
   slider.value=state.doy;
-  if(isMobile)openSidebar();
   render();
 }
 slider.addEventListener('input',function(){setDay(+slider.value);});
@@ -804,7 +818,10 @@ async function loadYear(deptId,year,manifestEntry){
 }
 
 (async function init(){
-  if(isMobile)document.getElementById('sidebar').classList.add('closed');
+  if(isMobile){
+    document.getElementById('sidebar').classList.add('closed');
+    document.getElementById('sb-open-btn').style.display='flex';
+  }
   syncFilterUI();
   showLoader(true,'Loading manifest...');
   var manifest=null;
